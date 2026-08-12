@@ -62,6 +62,11 @@ describe("prompt command naming", () => {
     expect(formatPromptCommandName("plan", "agent-board", "none")).toBe("mcp__agent_board__plan");
   });
 
+  it("sanitizes server names with spaces", () => {
+    expect(formatPromptCommandName("plan", "agent board", "server")).toBe("mcp__agent_board__plan");
+    expect(formatPromptCommandName("plan", "agent board", "none")).toBe("mcp__agent_board__plan");
+  });
+
   it("sanitizes prompt names with unusual characters", () => {
     expect(sanitizePromptName("weekly.report")).toBe("weekly_report");
     expect(sanitizePromptName("with spaces & symbols")).toBe("with_spaces_symbols");

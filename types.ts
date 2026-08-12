@@ -642,18 +642,22 @@ export interface McpPanelResult {
 /**
  * Get server prefix based on tool prefix mode.
  */
+function sanitizeServerPrefix(serverName: string): string {
+  return serverName.replace(/[^A-Za-z0-9_]+/g, "_");
+}
+
 export function getServerPrefix(
   serverName: string,
   mode: ToolPrefix
 ): string {
   if (mode === "none") return "";
   if (mode === "short") {
-    let short = serverName.replace(/-?mcp$/i, "").replace(/-/g, "_");
+    let short = sanitizeServerPrefix(serverName.replace(/-?mcp$/i, ""));
     if (!short) short = "mcp";
     return short;
   }
-  if (mode === "mcp") return `mcp__${serverName.replace(/-/g, "_")}`;
-  return serverName.replace(/-/g, "_");
+  if (mode === "mcp") return `mcp__${sanitizeServerPrefix(serverName)}`;
+  return sanitizeServerPrefix(serverName);
 }
 
 /**
@@ -729,7 +733,7 @@ export function formatPromptCommandName(
   serverName: string,
   prefix: ToolPrefix,
 ): string {
-  const serverPart = getServerPrefix(serverName, prefix) || serverName.replace(/-/g, "_") || "server";
+  const serverPart = getServerPrefix(serverName, prefix) || sanitizeServerPrefix(serverName) || "server";
   return `mcp__${serverPart}__${sanitizePromptName(promptName)}`;
 }
 

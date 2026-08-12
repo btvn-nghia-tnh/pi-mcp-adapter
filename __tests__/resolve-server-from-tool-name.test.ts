@@ -24,6 +24,14 @@ describe("resolveServerFromToolName", () => {
 			);
 		});
 
+		it("round-trips server names with spaces", () => {
+			const tool = formatToolName("web_search", "my server", "server");
+			expect(tool).toBe("my_server_web_search");
+			expect(resolveServerFromToolName(tool, ["my server"], "server")).toBe(
+				"my server",
+			);
+		});
+
 		it("resolves when multiple servers are configured and only one prefix matches", () => {
 			expect(
 				resolveServerFromToolName(

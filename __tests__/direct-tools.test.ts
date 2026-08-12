@@ -39,6 +39,21 @@ describe("formatToolName", () => {
     expect(formatToolName("namespace.tool", "demo", "none")).toBe("namespace_tool");
     expect(formatToolName("namespace.tool", "demo-mcp", "mcp")).toBe("mcp__demo_mcp_namespace_tool");
   });
+
+  it("sanitizes server names in live tool and resource metadata", () => {
+    const { metadata } = buildToolMetadata(
+      [{ name: "find", description: "Find" }] as any,
+      [{ name: "guide", uri: "file://guide" }] as any,
+      { command: "demo" },
+      "my server",
+      "server",
+    );
+
+    expect(metadata.map((tool) => tool.name)).toEqual([
+      "my_server_find",
+      "my_server_read_guide",
+    ]);
+  });
 });
 
 describe("buildProxyDescription", () => {
