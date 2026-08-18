@@ -7,12 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.26.1] - 2026-08-18
+
 ### Fixed
-- Scoped session tool approvals to the approved argument payload instead of every later call to the same tool. Thanks to [@spaceshipmike](https://github.com/spaceshipmike) for #367.
-- Stopped MCP panel commands from hanging in RPC, JSON, and print modes when terminal-only custom UI is unavailable. Thanks to [@shixin-guo](https://github.com/shixin-guo) for PR #365.
-- Kept compact MCP rows useful by showing a bounded tool-input preview and skipping leading blank output lines in collapsed result previews.
-- Recovered MCP gateway requests nested inside proxy `args` instead of silently showing status, and now rejects invalid nested gateway requests with guidance. Thanks to [@ibrmora](https://github.com/ibrmora) for #363.
-- Refreshed remote keep-alive tool catalogs before user input, adapter-triggered turns, and during health checks, reconnecting expired Streamable HTTP sessions so long-lived Pi sessions can discover replacement catalogs without restarting. Thanks to [@dmorn](https://github.com/dmorn) for #369 and PR #370.
+- Scoped “Allow for session” tool approvals to the approved arguments, so one approval no longer applies to later calls with different inputs. Thanks to [@spaceshipmike](https://github.com/spaceshipmike) for #367.
+- Stopped MCP panel commands from hanging in RPC, JSON, and print modes when terminal-only UI is unavailable. Thanks to [@shixin-guo](https://github.com/shixin-guo) for PR #365.
+- Kept compact MCP result rows useful by showing a short input preview and skipping leading blank output in collapsed previews.
+- Recovered MCP gateway requests nested inside proxy `args` instead of showing status, and now rejects invalid nested gateway requests with guidance. Thanks to [@ibrmora](https://github.com/ibrmora) for #363.
+- Kept remote keep-alive tool catalogs fresh across server restarts, so long-lived Pi sessions can discover replacement tools without restarting. Thanks to [@dmorn](https://github.com/dmorn) for #369 and PR #370.
 
 ## [2.26.0] - 2026-08-14
 
