@@ -18,7 +18,9 @@ import { createOAuthRuntime, shutdownOAuth } from "./mcp-auth-flow.ts";
 import { createMcpDirectToolCallRenderer, createMcpProxyToolCallRenderer, createMcpScriptToolCallRenderer, createMcpToolResultRenderer, resolveMcpToolRenderOptions } from "./tool-result-renderer.ts";
 import { toolErrorOverride } from "./error-signal.ts";
 import { createMcpRuntimeOwner, createOwnedUi, isAbortError, type McpRuntimeOwner } from "./runtime-owner.ts";
-import { publishMcpStatusShutdown } from "./mcp-status.ts";
+import { createMcpStatusSnapshot, publishMcpStatusShutdown } from "./mcp-status.ts";
+import { MCP_STATUS_EVENT } from "./types.ts";
+import { MCP_GUI_WIDGET_KEY, clearMcpGuiWidget, publishMcpGuiWidget, type McpGuiUi } from "./mcp-gui.ts";
 import { runMcpScript } from "./mcp-code.ts";
 import { cleanupMaterializedBinaryResources } from "./tool-registrar.ts";
 import { syncNamespaceProxyTools } from "./namespace-tools.ts";
@@ -138,6 +140,10 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
   let currentOwner: McpRuntimeOwner | null = null;
   let currentOAuthRuntime: McpOAuthRuntime | null = null;
   let lifecycleGeneration = 0;
+  // GUI widget (pi web / non-TUI hosts): live status card fed by
+  // MCP_STATUS_EVENT snapshots. Null when the TUI renders instead.
+  let guiWidgetUi: McpGuiUi | undefined;
+  let guiWidgetUnsubscribe: (() => void) | undefined;
   let retainedInitFailure: string | null = null;
 
   function retainInitFailure(error: unknown): string {
@@ -539,6 +545,17 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
     type: "string",
   });
 
+  function bindMcpGuiWidget(ui: McpGuiUi, boundState: McpExtensionState): void {
+    guiWidgetUnsubscribe?.();
+    guiWidgetUnsubscribe = undefined;
+    guiWidgetUi = ui;
+    guiWidgetUnsubscribe = pi.events.on(MCP_STATUS_EVENT, (data) => {
+      if (guiWidgetUi === undefined) return;
+      publishMcpGuiWidget(guiWidgetUi, data as Parameters<typeof publishMcpGuiWidget>[1]);
+    });
+    publishMcpGuiWidget(guiWidgetUi, createMcpStatusSnapshot(boundState));
+  }
+
   function startInitialization(ctx: ExtensionContext, owner: McpRuntimeOwner, oauthRuntime: McpOAuthRuntime, generation: number, staleReason: string): Promise<void> {
     owner.addCleanup(() => cleanupMaterializedBinaryResources(owner.signal));
     const promise = initializeMcp(pi, ctx, owner, {
@@ -587,6 +604,11 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
       // after Pi's model-facing direct-tool surface reflects live metadata.
       nextState.statusEvents = pi.events;
       updateStatusBar(nextState);
+      // Non-TUI hosts (pi web, rpc integrations) get a live GUI widget
+      // instead of the TUI status bar + interactive panel.
+      if (ctx.hasUI && ctx.mode !== undefined && ctx.mode !== "tui") {
+        bindMcpGuiWidget(ctx.ui as McpGuiUi, nextState);
+      }
       initPromise = null;
       if (earlyConfig.settings?.freezeDirectTools === true) {
         directToolsFrozen = true;
@@ -716,6 +738,12 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
 
     // Abort before awaiting cleanup so delayed initialization cannot touch stale
     // Pi context after session shutdown.
+    // Drop the GUI widget before tearing the runtime down.
+    guiWidgetUnsubscribe?.();
+    guiWidgetUnsubscribe = undefined;
+    const boundGuiUi = guiWidgetUi;
+    guiWidgetUi = undefined;
+    if (boundGuiUi) clearMcpGuiWidget(boundGuiUi);
     const stopOwner = owner?.stop("MCP extension session shutdown") ?? Promise.resolve();
     try {
       await Promise.all([

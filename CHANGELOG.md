@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Non-TUI hosts (pi web, rpc integrations) now render a live MCP status widget: structured `setWidgetData` payload (`pi-mcp-status`) plus plain-text `setWidget` lines, refreshed on every MCP status event. TUI behavior is unchanged.
+
 ### Fixed
 - Hardened MCP 2026 multi-round input flows across proxy, direct, resource, and UI-resource calls, with actionable no-UI errors and cancellation cleanup.
 - Hardened MCP 2026-07-28 catalog listens with visible drop/recovery state, bounded re-listen on activity, resource update signals for open UIs, and quiet metadata/cache refreshes. (#468)
