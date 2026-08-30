@@ -3,7 +3,7 @@ import {
 	buildMcpGuiPayload,
 	clearMcpGuiWidget,
 	MCP_GUI_WIDGET_KEY,
-	publishMcpGuiWidget,
+	publishMcpGuiOverlay,
 	type McpGuiUi,
 } from "../mcp-gui.ts";
 import type { McpStatusSnapshot } from "../types.ts";
@@ -105,29 +105,45 @@ describe("buildMcpGuiPayload", () => {
 	});
 });
 
-describe("publishMcpGuiWidget", () => {
-	it("registers lines through setWidget and data through setWidgetData", () => {
+describe("publishMcpGuiOverlay", () => {
+	it("registers an overlay payload with display, title, and closeCommand", () => {
 		const ui = mockUi();
 		const snap = snapshot({
 			servers: [{ name: "alpha", status: "connected", toolCount: 2, disabled: false, listenState: "active" }],
 			connectedCount: 1,
 		});
-		publishMcpGuiWidget(ui, snap);
+		publishMcpGuiOverlay(ui, snap, { title: "MCP servers", closeCommand: "/mcp" });
 
-		expect(ui.setWidget).toHaveBeenCalledWith(MCP_GUI_WIDGET_KEY, expect.any(Array), { placement: "aboveEditor" });
-		expect(ui.setWidgetData).toHaveBeenCalledWith(MCP_GUI_WIDGET_KEY, expect.objectContaining({ kind: "pi-mcp-status" }));
+		expect(ui.setWidgetData).toHaveBeenCalledWith(
+			MCP_GUI_WIDGET_KEY,
+			expect.objectContaining({
+				kind: "pi-mcp-status",
+				display: "overlay",
+				title: "MCP servers",
+				closeCommand: "/mcp",
+			}),
+		);
+	});
+
+	it("does NOT dock lines — the overlay channel is setWidgetData only", () => {
+		const ui = mockUi();
+		const snap = snapshot({
+			servers: [{ name: "alpha", status: "connected", toolCount: 1, disabled: false, listenState: "active" }],
+		});
+		publishMcpGuiOverlay(ui, snap, { title: "MCP", closeCommand: "/mcp" });
+		expect(ui.setWidget).not.toHaveBeenCalled();
 	});
 
 	it("clears both channels when the snapshot has no servers", () => {
 		const ui = mockUi();
-		publishMcpGuiWidget(ui, snapshot());
+		publishMcpGuiOverlay(ui, snapshot(), { title: "MCP", closeCommand: "/mcp" });
 		expect(ui.setWidget).toHaveBeenCalledWith(MCP_GUI_WIDGET_KEY, undefined);
 		expect(ui.setWidgetData).toHaveBeenCalledWith(MCP_GUI_WIDGET_KEY, undefined);
 	});
 
 	it("clears both channels when the snapshot is undefined", () => {
 		const ui = mockUi();
-		publishMcpGuiWidget(ui, undefined);
+		publishMcpGuiOverlay(ui, undefined, { title: "MCP", closeCommand: "/mcp" });
 		expect(ui.setWidget).toHaveBeenCalledWith(MCP_GUI_WIDGET_KEY, undefined);
 		expect(ui.setWidgetData).toHaveBeenCalledWith(MCP_GUI_WIDGET_KEY, undefined);
 	});
@@ -138,8 +154,7 @@ describe("publishMcpGuiWidget", () => {
 		const snap = snapshot({
 			servers: [{ name: "alpha", status: "connected", toolCount: 1, disabled: false, listenState: "active" }],
 		});
-		expect(() => publishMcpGuiWidget(ui as McpGuiUi, snap)).not.toThrow();
-		expect(ui.setWidget).toHaveBeenCalled();
+		expect(() => publishMcpGuiOverlay(ui as McpGuiUi, snap, { title: "MCP", closeCommand: "/mcp" })).not.toThrow();
 	});
 });
 

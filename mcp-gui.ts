@@ -8,10 +8,11 @@
  * that rich hosts render as an MCP status card, plus plain-text `setWidget`
  * lines as the universal fallback.
  *
- * The publisher is driven by MCP_STATUS_EVENT snapshots (see mcp-status.ts):
- * every connection change re-registers the widget, so the card is live.
- * `setWidgetData` is optional-chained so older pi hosts without the additive
- * method stay online; the lines alone remain a complete display.
+ * The widget is on-demand, mirroring the TUI's interactive /mcp panel: it
+ * registers with `display: "overlay"` only while the panel is open (the
+ * `/mcp` command toggles it), and MCP_STATUS_EVENT snapshots refresh it while
+ * open. `setWidgetData` is optional-chained so older pi hosts without the
+ * additive method stay online — they keep the text fallback instead.
  */
 
 import type { McpStatusSnapshot, McpServerStatusSnapshot } from "./types.ts";
@@ -118,15 +119,32 @@ export function buildMcpGuiPayload(snapshot: McpStatusSnapshot): {
 	};
 }
 
-/** Register the widget for a status snapshot; clears it when no servers exist. */
-export function publishMcpGuiWidget(ui: McpGuiUi, snapshot: McpStatusSnapshot | undefined): void {
+/** Overlay chrome the rich host renders around the payload. */
+export interface McpGuiOverlayOptions {
+	/** Human-readable panel title. */
+	title: string;
+	/** Command the host sends (as a prompt) when the user closes the panel. */
+	closeCommand: string;
+}
+
+/** Register the on-demand overlay widget for a status snapshot. */
+export function publishMcpGuiOverlay(
+	ui: McpGuiUi,
+	snapshot: McpStatusSnapshot | undefined,
+	options: McpGuiOverlayOptions,
+): void {
 	if (!snapshot || snapshot.servers.length === 0) {
 		clearMcpGuiWidget(ui);
 		return;
 	}
-	const { data, lines } = buildMcpGuiPayload(snapshot);
-	ui.setWidget(MCP_GUI_WIDGET_KEY, lines, { placement: "aboveEditor" });
-	ui.setWidgetData?.(MCP_GUI_WIDGET_KEY, data as unknown as Record<string, unknown>);
+	const { data } = buildMcpGuiPayload(snapshot);
+	const overlayPayload = {
+		...data,
+		display: "overlay",
+		title: options.title,
+		closeCommand: options.closeCommand,
+	} as unknown as Record<string, unknown>;
+	ui.setWidgetData?.(MCP_GUI_WIDGET_KEY, overlayPayload);
 }
 
 /** Remove the widget from every channel. */

@@ -19,8 +19,14 @@ import { createMcpDirectToolCallRenderer, createMcpProxyToolCallRenderer, create
 import { toolErrorOverride } from "./error-signal.ts";
 import { createMcpRuntimeOwner, createOwnedUi, isAbortError, type McpRuntimeOwner } from "./runtime-owner.ts";
 import { createMcpStatusSnapshot, publishMcpStatusShutdown } from "./mcp-status.ts";
-import { MCP_STATUS_EVENT } from "./types.ts";
-import { MCP_GUI_WIDGET_KEY, clearMcpGuiWidget, publishMcpGuiWidget, type McpGuiUi } from "./mcp-gui.ts";
+import { MCP_STATUS_EVENT, type McpStatusSnapshot } from "./types.ts";
+import {
+	clearMcpGuiWidget,
+	MCP_GUI_WIDGET_KEY,
+	publishMcpGuiOverlay,
+	type McpGuiOverlayOptions,
+	type McpGuiUi,
+} from "./mcp-gui.ts";
 import { runMcpScript } from "./mcp-code.ts";
 import { cleanupMaterializedBinaryResources } from "./tool-registrar.ts";
 import { syncNamespaceProxyTools } from "./namespace-tools.ts";
@@ -140,10 +146,34 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
   let currentOwner: McpRuntimeOwner | null = null;
   let currentOAuthRuntime: McpOAuthRuntime | null = null;
   let lifecycleGeneration = 0;
-  // GUI widget (pi web / non-TUI hosts): live status card fed by
-  // MCP_STATUS_EVENT snapshots. Null when the TUI renders instead.
+  // GUI overlay panel (pi web / non-TUI hosts): on-demand status card,
+  // toggled by the bare /mcp command like the TUI interactive panel.
+  // MCP_STATUS_EVENT snapshots refresh it while open.
   let guiWidgetUi: McpGuiUi | undefined;
   let guiWidgetUnsubscribe: (() => void) | undefined;
+  let guiPanelOpen = false;
+  const MCP_GUI_OVERLAY_OPTIONS: McpGuiOverlayOptions = {
+    title: "MCP servers",
+    closeCommand: "/mcp close",
+  };
+
+  /** Open (or refresh) the on-demand GUI overlay. Returns false when the host
+   * cannot render it (no setWidgetData), so the caller falls back to text. */
+  function openMcpGuiPanel(ui: McpGuiUi): boolean {
+    if (ui.setWidgetData === undefined) return false;
+    guiPanelOpen = true;
+    publishMcpGuiOverlay(ui, state ? createMcpStatusSnapshot(state) : undefined, MCP_GUI_OVERLAY_OPTIONS);
+    return true;
+  }
+
+  /** Close the on-demand GUI overlay (bare no-op when the host cannot
+   * render one). Idempotent. */
+  function closeMcpGuiPanel(ui: McpGuiUi): void {
+    guiPanelOpen = false;
+    if (ui.setWidgetData !== undefined) {
+      clearMcpGuiWidget(ui);
+    }
+  }
   let retainedInitFailure: string | null = null;
 
   function retainInitFailure(error: unknown): string {
@@ -546,14 +576,16 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
   });
 
   function bindMcpGuiWidget(ui: McpGuiUi, boundState: McpExtensionState): void {
+    void boundState;
     guiWidgetUnsubscribe?.();
     guiWidgetUnsubscribe = undefined;
     guiWidgetUi = ui;
+    guiPanelOpen = false;
     guiWidgetUnsubscribe = pi.events.on(MCP_STATUS_EVENT, (data) => {
-      if (guiWidgetUi === undefined) return;
-      publishMcpGuiWidget(guiWidgetUi, data as Parameters<typeof publishMcpGuiWidget>[1]);
+      // Refresh the panel only while the user has it open.
+      if (guiWidgetUi === undefined || !guiPanelOpen) return;
+      publishMcpGuiOverlay(guiWidgetUi, data as McpStatusSnapshot, MCP_GUI_OVERLAY_OPTIONS);
     });
-    publishMcpGuiWidget(guiWidgetUi, createMcpStatusSnapshot(boundState));
   }
 
   function startInitialization(ctx: ExtensionContext, owner: McpRuntimeOwner, oauthRuntime: McpOAuthRuntime, generation: number, staleReason: string): Promise<void> {
@@ -604,8 +636,9 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
       // after Pi's model-facing direct-tool surface reflects live metadata.
       nextState.statusEvents = pi.events;
       updateStatusBar(nextState);
-      // Non-TUI hosts (pi web, rpc integrations) get a live GUI widget
-      // instead of the TUI status bar + interactive panel.
+      // Non-TUI hosts (pi web, rpc integrations) get the on-demand GUI
+      // overlay panel (bare /mcp toggles it); the subscription refreshes
+      // it from MCP_STATUS_EVENT while open.
       if (ctx.hasUI && ctx.mode !== undefined && ctx.mode !== "tui") {
         bindMcpGuiWidget(ctx.ui as McpGuiUi, nextState);
       }
@@ -738,7 +771,8 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
 
     // Abort before awaiting cleanup so delayed initialization cannot touch stale
     // Pi context after session shutdown.
-    // Drop the GUI widget before tearing the runtime down.
+    // Drop the GUI overlay panel before tearing the runtime down.
+    guiPanelOpen = false;
     guiWidgetUnsubscribe?.();
     guiWidgetUnsubscribe = undefined;
     const boundGuiUi = guiWidgetUi;
@@ -775,6 +809,7 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
           { value: "disable", label: "disable — Disable a server" },
           { value: "enable", label: "enable — Enable a server" },
           { value: "status", label: "status — Show server status" },
+          { value: "close", label: "close — Close the MCP status panel (GUI hosts)" },
         ].filter(({ value }) => value.startsWith(normalized));
         return subcommands.length > 0 ? subcommands : null;
       }
@@ -915,11 +950,29 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
           }
           break;
         }
+        case "close":
+        case "hide": {
+          if (commandCtx.hasUI) {
+            commandOwner?.throwIfInactive();
+            closeMcpGuiPanel(commandCtx.ui as McpGuiUi);
+          }
+          break;
+        }
         case "status":
         case "":
         default:
           if (commandCtx.hasUI) {
             commandOwner?.throwIfInactive();
+            // Non-TUI hosts: the bare /mcp command opens (or refreshes)
+            // the GUI overlay panel when the host supports setWidgetData;
+            // older hosts fall through to the text fallback.
+            if (
+              commandCtx.mode !== undefined &&
+              commandCtx.mode !== "tui" &&
+              openMcpGuiPanel(commandCtx.ui as McpGuiUi)
+            ) {
+              break;
+            }
             if (programmaticConfig) {
               commandCtx.ui?.notify("MCP status is shown from the in-memory SDK config; configuration discovery is unavailable.", "info");
               await showStatus(state, commandCtx);

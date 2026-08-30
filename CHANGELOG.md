@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Non-TUI hosts (pi web, rpc integrations) now render a live MCP status widget: structured `setWidgetData` payload (`pi-mcp-status`) plus plain-text `setWidget` lines, refreshed on every MCP status event. TUI behavior is unchanged.
+- Non-TUI hosts (pi web, rpc integrations) get an on-demand MCP status panel: the bare `/mcp` command opens a GUI overlay (structured `setWidgetData` payload `pi-mcp-status` with `display: "overlay"`, refreshed live from MCP status events while open) and `/mcp close` dismisses it. Hosts without `setWidgetData` keep the text fallback; TUI behavior is unchanged.
 
 ### Fixed
 - Hardened MCP 2026 multi-round input flows across proxy, direct, resource, and UI-resource calls, with actionable no-UI errors and cancellation cleanup.
